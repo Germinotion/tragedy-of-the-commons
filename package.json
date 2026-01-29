@@ -1,0 +1,23 @@
+{
+  "name": "tragedy-of-the-commons",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "@types/three": "^0.172.0",
+    "@webgpu/types": "^0.1.69",
+    "typescript": "~5.7.2",
+    "vite": "^6.0.0"
+  },
+  "dependencies": {
+    "gsap": "^3.12.7",
+    "lil-gui": "^0.20.0",
+    "three": "^0.172.0",
+    "uplot": "^1.6.31"
+  }
+}

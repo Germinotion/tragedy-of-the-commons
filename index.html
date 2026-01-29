@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tragedy of the Commons - Interactive Simulations</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/src/style.css">
+  </head>
+  <body>
+    <!-- Landing Page -->
+    <div id="landing" class="page">
+      <header class="landing-header">
+        <h1>Tragedy of the Commons</h1>
+        <p class="subtitle">Interactive simulations exploring shared resource dilemmas</p>
+      </header>
+      <main id="scenario-grid" class="scenario-grid"></main>
+    </div>
+
+    <!-- Simulation Page -->
+    <div id="simulation" class="page hidden">
+      <!-- Canvas container -->
+      <div id="canvas-container"></div>
+
+      <!-- HUD Overlay -->
+      <div id="hud">
+        <!-- Top bar -->
+        <div class="hud-top">
+          <button id="btn-back" class="btn-icon" title="Back to menu">
+            <span class="icon">←</span>
+            <span class="label">Back</span>
+          </button>
+          <h2 id="scenario-title"></h2>
+          <button id="btn-info" class="btn-icon" title="Toggle info panel">
+            <span class="icon">ℹ</span>
+          </button>
+        </div>
+
+        <!-- Left panel (parameters) -->
+        <div id="panel-left" class="panel">
+          <div id="param-panel"></div>
+          <button id="btn-collapse-left" class="btn-collapse" title="Collapse panel">‹</button>
+        </div>
+
+        <!-- Right panel (charts) -->
+        <div id="panel-right" class="panel">
+          <button id="btn-collapse-right" class="btn-collapse" title="Collapse panel">›</button>
+          <div id="chart-panel"></div>
+        </div>
+
+        <!-- Bottom controls -->
+        <div class="hud-bottom">
+          <div class="time-controls">
+            <button id="btn-slower" class="btn-icon" title="Slower">◀◀</button>
+            <button id="btn-play" class="btn-icon btn-play" title="Play/Pause">▶</button>
+            <button id="btn-faster" class="btn-icon" title="Faster">▶▶</button>
+            <span id="speed-display" class="speed-display">1x</span>
+          </div>
+          <button id="btn-reset" class="btn-reset">Reset</button>
+        </div>
+
+        <!-- Info overlay -->
+        <div id="info-overlay" class="info-overlay hidden">
+          <div class="info-content">
+            <h3 id="info-title"></h3>
+            <div id="info-body"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
