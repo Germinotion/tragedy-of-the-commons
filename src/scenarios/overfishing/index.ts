@@ -57,6 +57,10 @@ export class OverfishingScenario extends ScenarioBase {
   private fishDummy = new THREE.Object3D();
   private fishColor = new THREE.Color();
 
+  // Underwater bounds for fish (water surface is at Y=0)
+  private readonly FISH_MIN_Y = -10;
+  private readonly FISH_MAX_Y = -1;  // Keep fish below water surface
+
   // Metrics
   private totalCatch = 0;
   private catchRate = 0;
@@ -78,10 +82,10 @@ export class OverfishingScenario extends ScenarioBase {
       perceptionRadius: 4,
     });
 
-    // Spawn initial fish
+    // Spawn initial fish - keep underwater
     const bounds = new THREE.Box3(
-      new THREE.Vector3(-20, -8, -20),
-      new THREE.Vector3(20, -2, 20)
+      new THREE.Vector3(-20, this.FISH_MIN_Y, -20),
+      new THREE.Vector3(20, this.FISH_MAX_Y, 20)
     );
     this.boidSystem.spawn(Math.floor(this.fishPopulation), bounds);
 
@@ -132,13 +136,13 @@ export class OverfishingScenario extends ScenarioBase {
   }
 
   private createFishInstances(): void {
-    // Simple fish shape using cone
-    const fishGeometry = new THREE.ConeGeometry(0.15, 0.5, 6);
-    fishGeometry.rotateZ(-Math.PI / 2);
+    // Create a more fish-like shape using BufferGeometry
+    const fishGeometry = this.createFishGeometry();
 
     const fishMaterial = new THREE.MeshStandardMaterial({
       color: 0xffa500,
-      roughness: 0.5,
+      roughness: 0.4,
+      metalness: 0.1,
     });
 
     const maxFish = 5000; // CPU boids limit
@@ -149,6 +153,73 @@ export class OverfishingScenario extends ScenarioBase {
     );
     this.fishInstances.count = 0;
     this.context.scene.add(this.fishInstances);
+  }
+
+  private createFishGeometry(): THREE.BufferGeometry {
+    // Create a fish shape: ellipsoid body with a tapered tail
+    const geometry = new THREE.BufferGeometry();
+
+    // Parameters
+    const bodyLength = 0.5;
+    const bodyWidth = 0.15;
+    const bodyHeight = 0.12;
+    const tailLength = 0.25;
+    const tailWidth = 0.2;
+
+    const vertices: number[] = [];
+    const indices: number[] = [];
+
+    // Body - elongated ellipsoid approximation using segments
+    const bodySegments = 8;
+    const radialSegments = 6;
+
+    // Generate body vertices
+    for (let i = 0; i <= bodySegments; i++) {
+      const t = i / bodySegments;
+      const x = (t - 0.5) * bodyLength;
+      // Ellipse profile: wider in middle, tapers at ends
+      const radiusScale = Math.sin(t * Math.PI);
+
+      for (let j = 0; j <= radialSegments; j++) {
+        const angle = (j / radialSegments) * Math.PI * 2;
+        const y = Math.cos(angle) * bodyHeight * radiusScale;
+        const z = Math.sin(angle) * bodyWidth * radiusScale;
+        vertices.push(x, y, z);
+      }
+    }
+
+    // Generate body faces
+    for (let i = 0; i < bodySegments; i++) {
+      for (let j = 0; j < radialSegments; j++) {
+        const a = i * (radialSegments + 1) + j;
+        const b = a + radialSegments + 1;
+        const c = a + 1;
+        const d = b + 1;
+
+        indices.push(a, b, c);
+        indices.push(c, b, d);
+      }
+    }
+
+    // Add tail fin (triangle)
+    const tailStart = vertices.length / 3;
+    // Tail connects to back of fish
+    const tailBaseX = bodyLength * 0.5;
+    vertices.push(tailBaseX, 0, 0);  // Base center
+    vertices.push(tailBaseX + tailLength, tailWidth * 0.5, 0);  // Top
+    vertices.push(tailBaseX + tailLength, -tailWidth * 0.5, 0);  // Bottom
+
+    indices.push(tailStart, tailStart + 1, tailStart + 2);
+    indices.push(tailStart, tailStart + 2, tailStart + 1);  // Back face
+
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+    geometry.setIndex(indices);
+    geometry.computeVertexNormals();
+
+    // Rotate so fish faces +X direction (forward)
+    geometry.rotateY(Math.PI);
+
+    return geometry;
   }
 
   private updateFishInstances(): void {
@@ -194,9 +265,12 @@ export class OverfishingScenario extends ScenarioBase {
     const angle = Math.random() * Math.PI * 2;
     const radius = 10 + Math.random() * 15;
 
+    // Boats float ON the water surface (Y slightly above 0)
+    const boatY = 0.8;
+
     const boat: Boat = {
       id: this.nextBoatId++,
-      position: new THREE.Vector3(Math.cos(angle) * radius, 0.5, Math.sin(angle) * radius),
+      position: new THREE.Vector3(Math.cos(angle) * radius, boatY, Math.sin(angle) * radius),
       velocity: new THREE.Vector3((Math.random() - 0.5) * 2, 0, (Math.random() - 0.5) * 2),
       catchCount: 0,
       mesh: null,
@@ -208,17 +282,21 @@ export class OverfishingScenario extends ScenarioBase {
       // Use loaded GLB model
       group = this.boatModel.clone();
       group.position.copy(boat.position);
+      // Adjust model to sit properly on water - model may have origin at bottom
+      group.position.y = boatY + 0.3;
     } else {
       // Fallback to simple boat mesh
       const hull = new THREE.Mesh(
         new THREE.BoxGeometry(1.5, 0.5, 0.8),
         new THREE.MeshStandardMaterial({ color: 0x8b4513 })
       );
+      hull.position.y = 0.25;  // Raise hull so bottom sits on water
+
       const cabin = new THREE.Mesh(
         new THREE.BoxGeometry(0.5, 0.4, 0.5),
         new THREE.MeshStandardMaterial({ color: 0xffffff })
       );
-      cabin.position.set(-0.3, 0.35, 0);
+      cabin.position.set(-0.3, 0.6, 0);
 
       group = new THREE.Group();
       group.add(hull);
@@ -277,6 +355,9 @@ export class OverfishingScenario extends ScenarioBase {
     });
     this.boidSystem.update(dt);
 
+    // Constrain fish to stay underwater (between FISH_MIN_Y and FISH_MAX_Y)
+    this.constrainFishToWater();
+
     // Fish population dynamics (logistic growth)
     const currentCount = this.boidSystem.getCount();
     const targetPopulation = logisticGrowthStep(
@@ -290,8 +371,8 @@ export class OverfishingScenario extends ScenarioBase {
     const toSpawn = Math.floor(targetPopulation - currentCount);
     if (toSpawn > 0) {
       const spawnBounds = new THREE.Box3(
-        new THREE.Vector3(-20, -8, -20),
-        new THREE.Vector3(20, -2, 20)
+        new THREE.Vector3(-20, this.FISH_MIN_Y, -20),
+        new THREE.Vector3(20, this.FISH_MAX_Y, 20)
       );
       this.boidSystem.spawn(Math.min(toSpawn, 10), spawnBounds);
     }
@@ -314,6 +395,30 @@ export class OverfishingScenario extends ScenarioBase {
 
     // Update metrics
     this.fishPopulation = this.boidSystem.getCount();
+  }
+
+  private constrainFishToWater(): void {
+    // Keep all fish within underwater bounds
+    for (const boid of this.boidSystem.boids) {
+      if (!boid.alive) continue;
+
+      // Hard constraint: clamp Y position to underwater region
+      if (boid.position.y > this.FISH_MAX_Y) {
+        boid.position.y = this.FISH_MAX_Y;
+        // Reverse Y velocity and add downward bias
+        boid.velocity.y = -Math.abs(boid.velocity.y) - 0.5;
+      } else if (boid.position.y < this.FISH_MIN_Y) {
+        boid.position.y = this.FISH_MIN_Y;
+        // Reverse Y velocity and add upward bias
+        boid.velocity.y = Math.abs(boid.velocity.y) + 0.5;
+      }
+
+      // Soft constraint: apply force to push fish towards middle depth
+      const midDepth = (this.FISH_MIN_Y + this.FISH_MAX_Y) / 2;
+      const depthDiff = boid.position.y - midDepth;
+      // Gentle force towards middle depth
+      boid.velocity.y -= depthDiff * 0.1;
+    }
   }
 
   private updateBoat(
@@ -379,13 +484,21 @@ export class OverfishingScenario extends ScenarioBase {
     }
     this.catchRate += caught / dt;
 
-    // Update mesh
+    // Update mesh position
     if (boat.mesh) {
-      boat.mesh.position.copy(boat.position);
+      // Keep boat on water surface with slight bobbing
+      const time = performance.now() * 0.001;
+      const bobOffset = Math.sin(time * 2 + boat.id) * 0.1;
+
+      boat.mesh.position.x = boat.position.x;
+      boat.mesh.position.z = boat.position.z;
+      // Boats float on water surface (Y=0) with bobbing
+      boat.mesh.position.y = 0.8 + bobOffset;
+
       if (boat.velocity.length() > 0.1) {
         boat.mesh.lookAt(
           boat.position.x + boat.velocity.x,
-          boat.position.y,
+          boat.mesh.position.y,
           boat.position.z + boat.velocity.z
         );
       }
@@ -514,8 +627,8 @@ export class OverfishingScenario extends ScenarioBase {
   reset(): void {
     this.boidSystem.reset();
     const bounds = new THREE.Box3(
-      new THREE.Vector3(-20, -8, -20),
-      new THREE.Vector3(20, -2, 20)
+      new THREE.Vector3(-20, this.FISH_MIN_Y, -20),
+      new THREE.Vector3(20, this.FISH_MAX_Y, 20)
     );
     this.boidSystem.spawn(Math.floor(this.fishCapacity * 0.8), bounds);
 
