@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
+// import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import { ScenarioBase } from '../ScenarioBase';
 import { ScenarioRegistry } from '../ScenarioRegistry';
 import { LogisticGrid } from '../../simulation/LogisticGrowth';
@@ -429,6 +429,9 @@ export class GrazingScenario extends ScenarioBase {
   }
 
   private async loadSheepModel(): Promise<void> {
+    // Disabled FBX loading for now - use procedural geometry
+    // TODO: Re-enable once FBX loading is tested
+    /*
     const loader = new FBXLoader();
     try {
       const fbx = await loader.loadAsync('/assets/models/farm-animals/quaternius/FBX/Sheep.fbx');
@@ -445,6 +448,7 @@ export class GrazingScenario extends ScenarioBase {
     } catch (err) {
       console.warn('Failed to load sheep FBX model, using fallback:', err);
     }
+    */
   }
 
   private setupLighting(): void {

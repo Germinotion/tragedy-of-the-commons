@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
+// import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import { ScenarioBase } from '../ScenarioBase';
 import { ScenarioRegistry } from '../ScenarioRegistry';
 import { BoidSystem } from '../../simulation/Boids';
@@ -144,8 +144,15 @@ export class OverfishingScenario extends ScenarioBase {
   }
 
   private createFishInstances(): void {
-    // Use loaded FBX geometry if available, otherwise use procedural
-    const fishGeometry = this.fishGeometryFromModel || this.createFishGeometry();
+    // Use loaded FBX geometry if available and valid, otherwise use procedural
+    let fishGeometry: THREE.BufferGeometry;
+    if (this.fishGeometryFromModel && this.fishGeometryFromModel.attributes.position) {
+      fishGeometry = this.fishGeometryFromModel;
+      console.log('Using FBX fish geometry');
+    } else {
+      fishGeometry = this.createFishGeometry();
+      console.log('Using procedural fish geometry');
+    }
 
     const fishMaterial = new THREE.MeshStandardMaterial({
       color: 0xffa500,
@@ -339,6 +346,9 @@ export class OverfishingScenario extends ScenarioBase {
   }
 
   private async loadFishModel(): Promise<void> {
+    // Disabled FBX loading for now - use procedural geometry
+    // TODO: Re-enable once FBX loading is tested
+    /*
     const loader = new FBXLoader();
     try {
       const fbx = await loader.loadAsync('/assets/models/fish/quaternius/FBX/Fish1.fbx');
@@ -356,6 +366,7 @@ export class OverfishingScenario extends ScenarioBase {
     } catch (err) {
       console.warn('Failed to load fish FBX model, using procedural geometry:', err);
     }
+    */
   }
 
   private setupLighting(): void {
