@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { ScenarioBase } from '../ScenarioBase';
 import { ScenarioRegistry } from '../ScenarioRegistry';
 import { WearGrid } from '../../simulation/CellularAutomata';
@@ -16,7 +17,8 @@ interface Pedestrian {
   path: [number, number][];
   pathIndex: number;
   speed: number;
-  mesh: THREE.Mesh | null;
+  mesh: THREE.Group | THREE.Mesh | null;
+  modelIndex: number;
 }
 
 interface SpawnPoint {
@@ -62,11 +64,18 @@ export class DesirePathsScenario extends ScenarioBase {
   private groundTexture!: THREE.DataTexture;
   private pedestrianGroup = new THREE.Group();
 
+  // Character models
+  private characterModels: THREE.Group[] = [];
+  private modelsLoaded = false;
+
   // Metrics
   private totalWalked = 0;
   private pathsFormed = 0;
 
   protected async setup(): Promise<void> {
+    // Load character models first
+    await this.loadCharacterModels();
+
     const gridSize = 64;
     this.wearGrid = new WearGrid(
       gridSize,
@@ -109,6 +118,53 @@ export class DesirePathsScenario extends ScenarioBase {
 
     // Setup lighting and camera
     this.setupLighting();
+  }
+
+  private async loadCharacterModels(): Promise<void> {
+    const loader = new GLTFLoader();
+    const modelPaths = [
+      '/assets/models/characters/Man.glb',
+      '/assets/models/characters/Woman.glb',
+      '/assets/models/characters/Hoodie.glb',
+      '/assets/models/characters/BusinessMan.glb',
+    ];
+
+    for (const path of modelPaths) {
+      try {
+        const gltf = await loader.loadAsync(path);
+        const model = gltf.scene;
+
+        // Compute bounding box and scale to appropriate size
+        const box = new THREE.Box3().setFromObject(model);
+        const size = new THREE.Vector3();
+        box.getSize(size);
+
+        // Scale to ~0.8 units tall
+        const targetHeight = 0.8;
+        const scale = targetHeight / size.y;
+        model.scale.setScalar(scale);
+
+        // Recompute box after scaling and center at origin
+        box.setFromObject(model);
+        const center = new THREE.Vector3();
+        box.getCenter(center);
+        model.position.set(-center.x, -box.min.y, -center.z);
+
+        // Enable shadows
+        model.traverse((child) => {
+          if (child instanceof THREE.Mesh) {
+            child.castShadow = true;
+            child.receiveShadow = true;
+          }
+        });
+
+        this.characterModels.push(model);
+      } catch (err) {
+        console.warn(`Failed to load character model ${path}:`, err);
+      }
+    }
+
+    this.modelsLoaded = this.characterModels.length > 0;
   }
 
   private createSidewalks(): void {
@@ -227,6 +283,8 @@ export class DesirePathsScenario extends ScenarioBase {
       }
     }
 
+    const modelIndex = Math.floor(Math.random() * Math.max(1, this.characterModels.length));
+
     const ped: Pedestrian = {
       id: this.nextPedId++,
       position: new THREE.Vector2(spawn.x, spawn.y),
@@ -234,16 +292,42 @@ export class DesirePathsScenario extends ScenarioBase {
       pathIndex: 0,
       speed: 8 + Math.random() * 4,
       mesh: null,
+      modelIndex,
     };
 
-    // Create pedestrian mesh (simple dot)
-    const mesh = new THREE.Mesh(
-      new THREE.CircleGeometry(0.3, 8),
-      new THREE.MeshBasicMaterial({ color: 0xff4444 })
-    );
-    mesh.rotation.x = -Math.PI / 2;
-    mesh.position.y = 0.05;
+    // Create pedestrian mesh
+    let mesh: THREE.Group | THREE.Mesh;
 
+    if (this.modelsLoaded && this.characterModels[modelIndex]) {
+      // Use character model
+      mesh = this.characterModels[modelIndex].clone();
+    } else {
+      // Fallback: simple colored capsule person
+      const group = new THREE.Group();
+
+      // Body (capsule)
+      const bodyGeo = new THREE.CapsuleGeometry(0.15, 0.4, 4, 8);
+      const colors = [0x3498db, 0xe74c3c, 0x2ecc71, 0xf39c12, 0x9b59b6, 0x1abc9c];
+      const bodyMat = new THREE.MeshStandardMaterial({
+        color: colors[Math.floor(Math.random() * colors.length)],
+      });
+      const body = new THREE.Mesh(bodyGeo, bodyMat);
+      body.position.y = 0.35;
+      body.castShadow = true;
+      group.add(body);
+
+      // Head
+      const headGeo = new THREE.SphereGeometry(0.12, 8, 6);
+      const headMat = new THREE.MeshStandardMaterial({ color: 0xfdbf6f });
+      const head = new THREE.Mesh(headGeo, headMat);
+      head.position.y = 0.7;
+      head.castShadow = true;
+      group.add(head);
+
+      mesh = group;
+    }
+
+    mesh.position.y = 0.01;
     this.pedestrianGroup.add(mesh);
     ped.mesh = mesh;
     this.pedestrians.push(ped);
@@ -289,10 +373,16 @@ export class DesirePathsScenario extends ScenarioBase {
         this.totalWalked += Math.sqrt(moveX * moveX + moveY * moveY);
       }
 
-      // Update mesh position
+      // Update mesh position and rotation
       if (ped.mesh) {
         ped.mesh.position.x = (ped.position.x / this.wearGrid.width - 0.5) * 30;
         ped.mesh.position.z = (ped.position.y / this.wearGrid.height - 0.5) * 30;
+
+        // Face movement direction
+        if (dist > 0.1) {
+          const angle = Math.atan2(dx, dy);
+          ped.mesh.rotation.y = angle;
+        }
       }
     }
 
