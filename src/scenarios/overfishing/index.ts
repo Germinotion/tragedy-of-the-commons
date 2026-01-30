@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import { ScenarioBase } from '../ScenarioBase';
 import { ScenarioRegistry } from '../ScenarioRegistry';
 import { BoidSystem } from '../../simulation/Boids';
@@ -67,10 +68,17 @@ export class OverfishingScenario extends ScenarioBase {
 
   // Loaded models
   private boatModel: THREE.Group | null = null;
+  private fishGeometryFromModel: THREE.BufferGeometry | null = null;
+
+  // Collision avoidance
+  private readonly BOAT_SEPARATION_RADIUS = 4;
 
   protected async setup(): Promise<void> {
-    // Load boat model
-    await this.loadBoatModel();
+    // Load models
+    await Promise.all([
+      this.loadBoatModel(),
+      this.loadFishModel(),
+    ]);
     this.fishCapacity = this.params.fishCapacity as number;
     this.fishPopulation = this.fishCapacity * 0.8;
 
@@ -136,8 +144,8 @@ export class OverfishingScenario extends ScenarioBase {
   }
 
   private createFishInstances(): void {
-    // Create a more fish-like shape using BufferGeometry
-    const fishGeometry = this.createFishGeometry();
+    // Use loaded FBX geometry if available, otherwise use procedural
+    const fishGeometry = this.fishGeometryFromModel || this.createFishGeometry();
 
     const fishMaterial = new THREE.MeshStandardMaterial({
       color: 0xffa500,
@@ -330,6 +338,26 @@ export class OverfishingScenario extends ScenarioBase {
     }
   }
 
+  private async loadFishModel(): Promise<void> {
+    const loader = new FBXLoader();
+    try {
+      const fbx = await loader.loadAsync('/assets/models/fish/Animated Fish Pack by @Quaternius/FBX/Fish1.fbx');
+      // Extract geometry from the loaded model
+      fbx.traverse((child) => {
+        if (child instanceof THREE.Mesh && !this.fishGeometryFromModel) {
+          const geom = child.geometry.clone();
+          // Scale down the geometry (FBX models are usually large)
+          geom.scale(0.003, 0.003, 0.003);
+          // Center the geometry
+          geom.center();
+          this.fishGeometryFromModel = geom;
+        }
+      });
+    } catch (err) {
+      console.warn('Failed to load fish FBX model, using procedural geometry:', err);
+    }
+  }
+
   private setupLighting(): void {
     const ambient = new THREE.AmbientLight(0xffffff, 0.5);
     this.context.scene.add(ambient);
@@ -454,6 +482,21 @@ export class OverfishingScenario extends ScenarioBase {
     // Random wander
     boat.velocity.x += (Math.random() - 0.5) * dt * 2;
     boat.velocity.z += (Math.random() - 0.5) * dt * 2;
+
+    // Boat-to-boat collision avoidance
+    for (const other of this.boats) {
+      if (other.id === boat.id) continue;
+      const dx = boat.position.x - other.position.x;
+      const dz = boat.position.z - other.position.z;
+      const dist = Math.sqrt(dx * dx + dz * dz);
+      if (dist < this.BOAT_SEPARATION_RADIUS && dist > 0.1) {
+        // Push away from other boat
+        const pushStrength = (this.BOAT_SEPARATION_RADIUS - dist) / this.BOAT_SEPARATION_RADIUS;
+        boat.velocity.x += (dx / dist) * pushStrength * 5 * dt;
+        boat.velocity.z += (dz / dist) * pushStrength * 5 * dt;
+      }
+    }
+
     boat.velocity.clampLength(0, 4);
     boat.velocity.y = 0;
 

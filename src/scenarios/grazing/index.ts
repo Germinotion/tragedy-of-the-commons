@@ -595,9 +595,26 @@ export class GrazingScenario extends ScenarioBase {
       boundaryForce.z = -Math.sign(sheep.position.z) * 3;
     }
 
+    // Sheep-to-sheep collision avoidance
+    const separationForce = new THREE.Vector3();
+    const separationRadius = 1.5;
+    for (const other of this.sheep) {
+      if (other.id === sheep.id || !other.alive) continue;
+      const dx = sheep.position.x - other.position.x;
+      const dz = sheep.position.z - other.position.z;
+      const dist = Math.sqrt(dx * dx + dz * dz);
+      if (dist < separationRadius && dist > 0.1) {
+        // Push away from other sheep
+        const pushStrength = (separationRadius - dist) / separationRadius;
+        separationForce.x += (dx / dist) * pushStrength * 4;
+        separationForce.z += (dz / dist) * pushStrength * 4;
+      }
+    }
+
     sheep.velocity.add(wanderForce.multiplyScalar(dt));
     sheep.velocity.add(grassSeekForce.multiplyScalar(dt));
     sheep.velocity.add(boundaryForce.multiplyScalar(dt));
+    sheep.velocity.add(separationForce.multiplyScalar(dt));
     sheep.velocity.clampLength(0, 2.5);  // Faster movement
     sheep.velocity.y = 0;
 
