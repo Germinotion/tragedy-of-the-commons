@@ -341,7 +341,7 @@ export class OverfishingScenario extends ScenarioBase {
   private async loadFishModel(): Promise<void> {
     const loader = new FBXLoader();
     try {
-      const fbx = await loader.loadAsync('/assets/models/fish/Animated Fish Pack by @Quaternius/FBX/Fish1.fbx');
+      const fbx = await loader.loadAsync('/assets/models/fish/quaternius/FBX/Fish1.fbx');
       // Extract geometry from the loaded model
       fbx.traverse((child) => {
         if (child instanceof THREE.Mesh && !this.fishGeometryFromModel) {

@@ -431,7 +431,7 @@ export class GrazingScenario extends ScenarioBase {
   private async loadSheepModel(): Promise<void> {
     const loader = new FBXLoader();
     try {
-      const fbx = await loader.loadAsync('/assets/models/farm-animals/Farm Animals by @Quaternius/FBX/Sheep.fbx');
+      const fbx = await loader.loadAsync('/assets/models/farm-animals/quaternius/FBX/Sheep.fbx');
       this.sheepModel = fbx;
       // Scale the model - FBX models from Quaternius are usually large
       this.sheepModel.scale.setScalar(0.008);
