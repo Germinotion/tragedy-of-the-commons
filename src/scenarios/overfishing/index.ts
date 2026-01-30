@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-// import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
+import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import { ScenarioBase } from '../ScenarioBase';
 import { ScenarioRegistry } from '../ScenarioRegistry';
 import { BoidSystem } from '../../simulation/Boids';
@@ -346,19 +346,27 @@ export class OverfishingScenario extends ScenarioBase {
   }
 
   private async loadFishModel(): Promise<void> {
-    // Disabled FBX loading for now - use procedural geometry
-    // TODO: Re-enable once FBX loading is tested
-    /*
     const loader = new FBXLoader();
     try {
       const fbx = await loader.loadAsync('/assets/models/fish/quaternius/FBX/Fish1.fbx');
+
       // Extract geometry from the loaded model
       fbx.traverse((child) => {
         if (child instanceof THREE.Mesh && !this.fishGeometryFromModel) {
           const geom = child.geometry.clone();
-          // Scale down the geometry (FBX models are usually large)
-          geom.scale(0.003, 0.003, 0.003);
-          // Center the geometry
+
+          // Compute bounding box to determine proper scale
+          geom.computeBoundingBox();
+          const box = geom.boundingBox!;
+          const size = new THREE.Vector3();
+          box.getSize(size);
+
+          // Target size: about 0.5 units long (fish length)
+          const targetLength = 0.5;
+          const maxDim = Math.max(size.x, size.y, size.z);
+          const scale = targetLength / maxDim;
+
+          geom.scale(scale, scale, scale);
           geom.center();
           this.fishGeometryFromModel = geom;
         }
@@ -366,7 +374,6 @@ export class OverfishingScenario extends ScenarioBase {
     } catch (err) {
       console.warn('Failed to load fish FBX model, using procedural geometry:', err);
     }
-    */
   }
 
   private setupLighting(): void {
