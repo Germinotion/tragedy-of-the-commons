@@ -295,16 +295,15 @@ export class DesirePathsScenario extends ScenarioBase {
       modelIndex,
     };
 
-    // Create pedestrian mesh
-    let mesh: THREE.Group | THREE.Mesh;
+    // Create pedestrian mesh in a container group
+    const container = new THREE.Group();
 
     if (this.modelsLoaded && this.characterModels[modelIndex]) {
-      // Use character model
-      mesh = this.characterModels[modelIndex].clone();
+      // Use character model - clone and add to container
+      const model = this.characterModels[modelIndex].clone();
+      container.add(model);
     } else {
       // Fallback: simple colored capsule person
-      const group = new THREE.Group();
-
       // Body (capsule)
       const bodyGeo = new THREE.CapsuleGeometry(0.15, 0.4, 4, 8);
       const colors = [0x3498db, 0xe74c3c, 0x2ecc71, 0xf39c12, 0x9b59b6, 0x1abc9c];
@@ -314,7 +313,7 @@ export class DesirePathsScenario extends ScenarioBase {
       const body = new THREE.Mesh(bodyGeo, bodyMat);
       body.position.y = 0.35;
       body.castShadow = true;
-      group.add(body);
+      container.add(body);
 
       // Head
       const headGeo = new THREE.SphereGeometry(0.12, 8, 6);
@@ -322,12 +321,10 @@ export class DesirePathsScenario extends ScenarioBase {
       const head = new THREE.Mesh(headGeo, headMat);
       head.position.y = 0.7;
       head.castShadow = true;
-      group.add(head);
-
-      mesh = group;
+      container.add(head);
     }
 
-    mesh.position.y = 0.01;
+    const mesh = container;
     this.pedestrianGroup.add(mesh);
     ped.mesh = mesh;
     this.pedestrians.push(ped);
@@ -469,8 +466,8 @@ export class DesirePathsScenario extends ScenarioBase {
 
   getCameraPresets(): CameraPreset[] {
     return [
-      { name: 'Top Down', position: [0, 35, 0.1], target: [0, 0, 0] },
       { name: 'Isometric', position: [20, 25, 20], target: [0, 0, 0] },
+      { name: 'Top Down', position: [0, 35, 0.1], target: [0, 0, 0] },
       { name: 'Low Angle', position: [15, 5, 15], target: [0, 0, 0] },
     ];
   }
