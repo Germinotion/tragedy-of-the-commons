@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
+// import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import { ScenarioBase } from '../ScenarioBase';
 import { ScenarioRegistry } from '../ScenarioRegistry';
 import { LogisticGrid } from '../../simulation/LogisticGrowth';
@@ -84,8 +84,8 @@ export class GrazingScenario extends ScenarioBase {
   private sheepModel: THREE.Group | null = null;
 
   protected async setup(): Promise<void> {
-    // Try to load sheep FBX model
-    await this.loadSheepModel();
+    // Use procedural sheep (FBX loading disabled for now)
+    // await this.loadSheepModel();
     // Initialize grass grid (32x32 cells)
     const gridSize = 32;
     this.grassGrid = new LogisticGrid(
@@ -428,49 +428,16 @@ export class GrazingScenario extends ScenarioBase {
     return sheep;
   }
 
-  private async loadSheepModel(): Promise<void> {
-    const loader = new FBXLoader();
-    try {
-      const fbx = await loader.loadAsync('/assets/models/farm-animals/quaternius/FBX/Sheep.fbx');
-
-      if (fbx.children.length === 0) {
-        console.warn('Sheep FBX has no children, using fallback');
-        return;
-      }
-
-      // Compute bounding box to determine proper scale
-      const box = new THREE.Box3().setFromObject(fbx);
-      const size = new THREE.Vector3();
-      box.getSize(size);
-
-      // Target size: about 0.8 units tall (sheep height)
-      const targetHeight = 0.8;
-      const scale = targetHeight / size.y;
-
-      this.sheepModel = fbx;
-      this.sheepModel.scale.setScalar(scale);
-
-      // Center the model at origin
-      box.setFromObject(this.sheepModel);
-      const center = new THREE.Vector3();
-      box.getCenter(center);
-      this.sheepModel.position.sub(center);
-      this.sheepModel.position.y = 0; // Keep feet on ground
-
-      // Apply shadows
-      this.sheepModel.traverse((child) => {
-        if (child instanceof THREE.Mesh) {
-          child.castShadow = true;
-          child.receiveShadow = true;
-          if (child.material) {
-            (child.material as THREE.Material).side = THREE.DoubleSide;
-          }
-        }
-      });
-    } catch (err) {
-      console.warn('Failed to load sheep FBX model, using fallback:', err);
-    }
-  }
+  // FBX loading disabled - using procedural sheep
+  // private async loadSheepModel(): Promise<void> {
+  //   const loader = new FBXLoader();
+  //   try {
+  //     const fbx = await loader.loadAsync('/assets/models/farm-animals/quaternius/FBX/Sheep.fbx');
+  //     // ... FBX loading code ...
+  //   } catch (err) {
+  //     console.warn('Failed to load sheep FBX model, using fallback:', err);
+  //   }
+  // }
 
   private setupLighting(): void {
     // Warm ambient for natural outdoor feel
@@ -717,7 +684,7 @@ export class GrazingScenario extends ScenarioBase {
       },
       {
         key: 'shepherdCount',
-        label: 'Number of Shepherds',
+        label: 'Shepherds (3 sheep each)',
         type: 'number',
         default: 3,
         min: 1,
