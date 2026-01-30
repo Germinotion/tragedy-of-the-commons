@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import { ScenarioBase } from '../ScenarioBase';
 import { ScenarioRegistry } from '../ScenarioRegistry';
 import { LogisticGrid } from '../../simulation/LogisticGrowth';
@@ -79,7 +80,12 @@ export class GrazingScenario extends ScenarioBase {
     0x9c27b0, // Purple
   ];
 
+  // Loaded sheep model
+  private sheepModel: THREE.Group | null = null;
+
   protected async setup(): Promise<void> {
+    // Try to load sheep FBX model
+    await this.loadSheepModel();
     // Initialize grass grid (32x32 cells)
     const gridSize = 32;
     this.grassGrid = new LogisticGrid(
@@ -261,9 +267,31 @@ export class GrazingScenario extends ScenarioBase {
   }
 
   private createSheepMesh(shepherdIndex: number): THREE.Group {
+    const shepherdColor = this.shepherdColors[shepherdIndex % this.shepherdColors.length];
+
+    // Use loaded FBX model if available
+    if (this.sheepModel) {
+      const group = this.sheepModel.clone();
+
+      // Add shepherd marker - colored ribbon/collar
+      const collar = new THREE.Mesh(
+        new THREE.TorusGeometry(0.15, 0.03, 6, 12),
+        new THREE.MeshStandardMaterial({
+          color: shepherdColor,
+          emissive: shepherdColor,
+          emissiveIntensity: 0.4,
+        })
+      );
+      collar.position.set(0.2, 0.25, 0);
+      collar.rotation.z = Math.PI / 2;
+      group.add(collar);
+
+      return group;
+    }
+
+    // Fallback: procedural sheep mesh
     const group = new THREE.Group();
     const sheepColor = 0xf5f5f0;
-    const shepherdColor = this.shepherdColors[shepherdIndex % this.shepherdColors.length];
 
     // Fluffy body
     const woolMaterial = new THREE.MeshStandardMaterial({
@@ -400,6 +428,25 @@ export class GrazingScenario extends ScenarioBase {
     return sheep;
   }
 
+  private async loadSheepModel(): Promise<void> {
+    const loader = new FBXLoader();
+    try {
+      const fbx = await loader.loadAsync('/assets/models/farm-animals/Farm Animals by @Quaternius/FBX/Sheep.fbx');
+      this.sheepModel = fbx;
+      // Scale the model - FBX models from Quaternius are usually large
+      this.sheepModel.scale.setScalar(0.008);
+      // Apply materials
+      this.sheepModel.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+          child.castShadow = true;
+          child.receiveShadow = true;
+        }
+      });
+    } catch (err) {
+      console.warn('Failed to load sheep FBX model, using fallback:', err);
+    }
+  }
+
   private setupLighting(): void {
     // Warm ambient for natural outdoor feel
     const ambient = new THREE.AmbientLight(0xffffff, 0.6);
@@ -452,13 +499,22 @@ export class GrazingScenario extends ScenarioBase {
       // Move sheep
       this.moveSheep(sheep, dt);
 
-      // Consume grass
+      // Consume grass from current cell and neighbors (sheep graze an area, not a point)
       const gridX = Math.floor((sheep.position.x + 25) / 50 * this.grassGrid.width);
       const gridY = Math.floor((sheep.position.z + 25) / 50 * this.grassGrid.height);
-      const consumed = this.grassGrid.consume(gridX, gridY, consumptionRate * dt);
 
-      sheep.energy += consumed * 10;
-      sheep.energy -= dt * 5; // Metabolism
+      let totalConsumed = 0;
+      // Graze from 3x3 area centered on sheep
+      for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+          const weight = (dx === 0 && dy === 0) ? 0.5 : 0.0625; // Center gets more
+          const consumed = this.grassGrid.consume(gridX + dx, gridY + dy, consumptionRate * weight * dt);
+          totalConsumed += consumed;
+        }
+      }
+
+      sheep.energy += totalConsumed * 8;  // Energy from grass
+      sheep.energy -= dt * 8; // Higher metabolism
 
       // Death
       if (sheep.energy <= 0) {
@@ -469,9 +525,9 @@ export class GrazingScenario extends ScenarioBase {
         continue;
       }
 
-      // Reproduction
-      if (sheep.energy > reproductionThreshold && Math.random() < 0.01 * greediness * dt) {
-        sheep.energy -= reproductionThreshold * 0.6;
+      // Reproduction - more likely when well-fed and greedy
+      if (sheep.energy > reproductionThreshold && Math.random() < 0.1 * greediness * dt) {
+        sheep.energy -= reproductionThreshold * 0.5;
         this.spawnSheep(sheep.shepherd);
       }
     }
@@ -479,10 +535,14 @@ export class GrazingScenario extends ScenarioBase {
     // Remove dead sheep
     this.sheep = this.sheep.filter((s) => s.alive);
 
-    // Shepherds add sheep based on greediness
-    if (Math.random() < greediness * 0.05 * dt) {
-      const shepherd = Math.floor(Math.random() * (this.params.shepherdCount as number));
-      this.spawnSheep(shepherd);
+    // Shepherds actively add sheep based on greediness
+    // At max greediness, each shepherd adds ~1 sheep every 2 seconds
+    const shepherdCount = this.params.shepherdCount as number;
+    const spawnChance = greediness * greediness * 0.5 * dt; // Quadratic scaling
+    for (let s = 0; s < shepherdCount; s++) {
+      if (Math.random() < spawnChance) {
+        this.spawnSheep(s);
+      }
     }
 
     // Update metrics
@@ -491,12 +551,39 @@ export class GrazingScenario extends ScenarioBase {
   }
 
   private moveSheep(sheep: Sheep, dt: number): void {
-    // Simple wander behavior
+    // Seek grass when hungry, wander when full
     const wanderForce = new THREE.Vector3(
       (Math.random() - 0.5) * 2,
       0,
       (Math.random() - 0.5) * 2
     );
+
+    // Seek better grass if hungry (energy < 60)
+    const grassSeekForce = new THREE.Vector3();
+    if (sheep.energy < 60) {
+      // Look for nearby cell with most grass
+      const cellSize = 50 / this.grassGrid.width;
+      let bestGrass = 0;
+      let bestDir = new THREE.Vector3();
+
+      for (let dx = -2; dx <= 2; dx++) {
+        for (let dz = -2; dz <= 2; dz++) {
+          if (dx === 0 && dz === 0) continue;
+          const checkX = sheep.position.x + dx * cellSize;
+          const checkZ = sheep.position.z + dz * cellSize;
+          const gridX = Math.floor((checkX + 25) / 50 * this.grassGrid.width);
+          const gridY = Math.floor((checkZ + 25) / 50 * this.grassGrid.height);
+          const grass = this.grassGrid.get(gridX, gridY);
+          if (grass > bestGrass) {
+            bestGrass = grass;
+            bestDir.set(dx, 0, dz).normalize();
+          }
+        }
+      }
+      if (bestGrass > 0) {
+        grassSeekForce.copy(bestDir).multiplyScalar(3);
+      }
+    }
 
     // Boundary force
     const boundaryForce = new THREE.Vector3();
@@ -509,13 +596,14 @@ export class GrazingScenario extends ScenarioBase {
     }
 
     sheep.velocity.add(wanderForce.multiplyScalar(dt));
+    sheep.velocity.add(grassSeekForce.multiplyScalar(dt));
     sheep.velocity.add(boundaryForce.multiplyScalar(dt));
-    sheep.velocity.clampLength(0, 1.5);
+    sheep.velocity.clampLength(0, 2.5);  // Faster movement
     sheep.velocity.y = 0;
 
     sheep.position.add(sheep.velocity.clone().multiplyScalar(dt));
 
-    // Keep on terrain - this is the key fix
+    // Keep on terrain
     const terrainY = this.getTerrainHeight(sheep.position.x, sheep.position.z);
     sheep.position.y = terrainY;
 
@@ -549,10 +637,10 @@ export class GrazingScenario extends ScenarioBase {
         key: 'grassRegrowthRate',
         label: 'Grass Regrowth Rate',
         type: 'number',
-        default: 0.5,
-        min: 0.1,
-        max: 2,
-        step: 0.1,
+        default: 0.15,  // Slower regrowth makes depletion possible
+        min: 0.05,
+        max: 0.5,
+        step: 0.05,
         folder: 'Resource',
       },
       {
@@ -569,19 +657,19 @@ export class GrazingScenario extends ScenarioBase {
         key: 'consumptionRate',
         label: 'Sheep Consumption Rate',
         type: 'number',
-        default: 2,
-        min: 0.5,
-        max: 5,
-        step: 0.5,
+        default: 8,  // Higher consumption per sheep
+        min: 2,
+        max: 20,
+        step: 1,
         folder: 'Agents',
       },
       {
         key: 'reproductionThreshold',
         label: 'Reproduction Energy',
         type: 'number',
-        default: 100,
-        min: 50,
-        max: 200,
+        default: 80,  // Lower threshold = easier reproduction
+        min: 40,
+        max: 150,
         step: 10,
         folder: 'Agents',
       },
